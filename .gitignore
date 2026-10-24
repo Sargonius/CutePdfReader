@@ -1,0 +1,4 @@
+obj/
+dist/
+# downloaded by tools\get-pdfium.ps1 (licenses next to it are kept in git)
+third_party/pdfium/pdfium.dll

@@ -1,0 +1,146 @@
+<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid.ColumnDefinitions>
+    <ColumnDefinition x:Name="SidebarColumn" Width="290" MinWidth="250" MaxWidth="520"/>
+    <ColumnDefinition Width="Auto"/>
+    <ColumnDefinition Width="*"/>
+  </Grid.ColumnDefinitions>
+
+  <!-- ===== Sidebar: textbooks + mascot ===== -->
+  <Grid x:Name="Sidebar" Grid.Column="0" Background="{StaticResource SidebarBrush}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <DockPanel Margin="16,12,10,8">
+      <Button x:Name="AddButton" DockPanel.Dock="Right" Style="{StaticResource PillButton}" ToolTip="Добавить PDF-учебники (Ctrl+O)">
+        <StackPanel Orientation="Horizontal">
+          <Path Style="{StaticResource IconPath}" Data="{StaticResource IconPlus}" Margin="-3,0,4,0"/>
+          <TextBlock Text="Добавить" VerticalAlignment="Center"/>
+        </StackPanel>
+      </Button>
+      <TextBlock Text="Мои учебники" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"
+                 Foreground="{StaticResource InkBrush}"/>
+    </DockPanel>
+
+    <Border x:Name="UpdateBanner" Grid.Row="1" Margin="12,0,12,8" Background="#FFF1F6" BorderBrush="#FFD3E1" BorderThickness="1"
+            CornerRadius="10" Padding="10,5,5,5" Visibility="Collapsed">
+      <DockPanel>
+        <Button x:Name="UpdateButton" DockPanel.Dock="Right" Style="{StaticResource PillButton}" Padding="10,4" Content="Обновить"/>
+        <TextBlock x:Name="UpdateText" VerticalAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource InkBrush}"/>
+      </DockPanel>
+    </Border>
+
+    <Border Grid.Row="2" Margin="12,0,12,8" Background="#E2F0FA" CornerRadius="10" Padding="3">
+      <UniformGrid Columns="2">
+        <RadioButton x:Name="CurrentTab" GroupName="BookTabs" Style="{StaticResource TabButton}" IsChecked="True" Content="Текущие"/>
+        <RadioButton x:Name="ArchiveTab" GroupName="BookTabs" Style="{StaticResource TabButton}" Content="Архив"/>
+      </UniformGrid>
+    </Border>
+
+    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  Focusable="False" Padding="12,0,8,0">
+      <ItemsControl x:Name="BookList" ItemTemplate="{StaticResource BookTemplate}" Focusable="False"/>
+    </ScrollViewer>
+    <TextBlock x:Name="ListEmptyText" Grid.Row="3" Margin="28,20" TextWrapping="Wrap" TextAlignment="Center"
+               VerticalAlignment="Top" Foreground="{StaticResource InkSoftBrush}" IsHitTestVisible="False"/>
+
+    <Border x:Name="MascotCard" Grid.Row="4" Margin="12,6,12,12" Background="White" BorderBrush="{StaticResource LineBrush}"
+            BorderThickness="1" CornerRadius="14" Padding="8" Cursor="Hand"
+            ToolTip="Нажми — будет новая картинка. Правый клик — добавить свои">
+      <StackPanel>
+        <Grid Height="112">
+          <Image x:Name="MascotImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed"/>
+          <Image x:Name="MascotArt" Stretch="Uniform" Margin="14,4"/>
+        </Grid>
+        <Border Background="{StaticResource SkyPaleBrush}" CornerRadius="10" Padding="8,5" Margin="0,6,0,0">
+          <TextBlock x:Name="MascotPhrase" TextWrapping="Wrap" TextAlignment="Center" FontSize="12"
+                     Foreground="{StaticResource InkBrush}"/>
+        </Border>
+        <Button x:Name="MascotAddButton" Style="{StaticResource LinkButton}" Content="+ добавить картинки"
+                HorizontalAlignment="Center" Margin="0,4,0,0"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+
+  <GridSplitter x:Name="Splitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" ResizeBehavior="PreviousAndNext"
+                Background="Transparent" Focusable="False" Cursor="SizeWE"/>
+
+  <!-- ===== Reading area ===== -->
+  <Grid Grid.Column="2">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <Border x:Name="Toolbar" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="1,0,0,1" Padding="8,6">
+      <DockPanel>
+        <Button x:Name="SidebarButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}" ToolTip="Скрыть / показать список (Ctrl+B)">
+          <Path Style="{StaticResource IconPath}" Data="{StaticResource IconSidebar}"/>
+        </Button>
+        <Button x:Name="MoreButton" DockPanel.Dock="Left" Style="{StaticResource FlatButton}" Margin="2,0,0,0"
+                ToolTip="Синхронизация, обновления и прочее">
+          <Path Style="{StaticResource IconPath}" Data="{StaticResource IconMore}" StrokeThickness="2.6"/>
+        </Button>
+        <Button x:Name="FullscreenButton" DockPanel.Dock="Right" Style="{StaticResource FlatButton}" ToolTip="Во весь экран (F11)">
+          <Path Style="{StaticResource IconPath}" Data="{StaticResource IconFullscreen}"/>
+        </Button>
+        <StackPanel x:Name="ZoomPanel" DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,10,0">
+          <Button x:Name="ZoomOutButton" Style="{StaticResource FlatButton}" ToolTip="Мельче (Ctrl + минус)">
+            <Path Style="{StaticResource IconPath}" Data="{StaticResource IconMinus}"/>
+          </Button>
+          <TextBlock x:Name="ZoomText" Width="44" TextAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource InkSoftBrush}"/>
+          <Button x:Name="ZoomInButton" Style="{StaticResource FlatButton}" ToolTip="Крупнее (Ctrl + плюс, или Ctrl + колёсико)">
+            <Path Style="{StaticResource IconPath}" Data="{StaticResource IconPlus}"/>
+          </Button>
+          <Button x:Name="FitWidthButton" Style="{StaticResource FlatButton}" ToolTip="По ширине (Ctrl+0)" Margin="6,0,0,0">
+            <Path Style="{StaticResource IconPath}" Data="{StaticResource IconFitWidth}"/>
+          </Button>
+          <Button x:Name="FitPageButton" Style="{StaticResource FlatButton}" ToolTip="Страница целиком">
+            <Path Style="{StaticResource IconPath}" Data="{StaticResource IconFitPage}"/>
+          </Button>
+        </StackPanel>
+        <StackPanel x:Name="PagePanel" DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,18,0">
+          <Button x:Name="PrevPageButton" Style="{StaticResource FlatButton}" ToolTip="Предыдущая страница (←)">
+            <Path Style="{StaticResource IconPath}" Data="{StaticResource IconPrev}"/>
+          </Button>
+          <TextBox x:Name="PageBox" Width="54" Style="{StaticResource PageBoxStyle}" VerticalAlignment="Center"
+                   ToolTip="Номер страницы: введи и нажми Enter (Ctrl+G)"/>
+          <TextBlock x:Name="PageCountText" VerticalAlignment="Center" Margin="7,0,3,0" Foreground="{StaticResource InkSoftBrush}"/>
+          <Button x:Name="NextPageButton" Style="{StaticResource FlatButton}" ToolTip="Следующая страница (→)">
+            <Path Style="{StaticResource IconPath}" Data="{StaticResource IconNext}"/>
+          </Button>
+        </StackPanel>
+        <TextBlock x:Name="BookTitle" VerticalAlignment="Center" Margin="8,0,12,0" FontSize="14" FontWeight="SemiBold"
+                   TextTrimming="CharacterEllipsis" Foreground="{StaticResource InkBrush}" Cursor="Hand"
+                   ToolTip="Нажми, чтобы переименовать (F2)"/>
+      </DockPanel>
+    </Border>
+
+    <Border x:Name="ReaderHost" Grid.Row="1" BorderBrush="{StaticResource LineBrush}" BorderThickness="1,0,0,0"/>
+
+    <Grid x:Name="EmptyState" Grid.Row="1" Background="{StaticResource ReaderBrush}">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
+        <Image x:Name="EmptyArt" Width="230" Height="178"/>
+        <TextBlock Text="Перетащи сюда PDF-учебник" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Center"
+                   Margin="0,18,0,6" Foreground="{StaticResource InkBrush}"/>
+        <TextBlock Text="Я запомню страничку, на которой ты остановишься — в каждом учебнике" HorizontalAlignment="Center"
+                   TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}"/>
+        <Button x:Name="EmptyAddButton" Style="{StaticResource PillButton}" Content="Выбрать PDF…" HorizontalAlignment="Center"
+                Margin="0,18,0,0" Padding="20,8"/>
+      </StackPanel>
+    </Grid>
+  </Grid>
+
+  <!-- Shown while files are dragged over the window -->
+  <Border x:Name="DropOverlay" Grid.ColumnSpan="3" Background="#D9EEF8FE" Visibility="Collapsed" IsHitTestVisible="False">
+    <Border BorderBrush="{StaticResource SkyBrush}" BorderThickness="3" CornerRadius="24" Margin="24">
+      <TextBlock Text="Отпускай — добавлю в учебники ♡" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center"
+                 VerticalAlignment="Center" Foreground="{StaticResource SkyDeepBrush}"/>
+    </Border>
+  </Border>
+</Grid>
