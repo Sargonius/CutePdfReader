@@ -120,11 +120,11 @@ namespace CutePdf
             Ui.Find<Button>(root, "FitWidthButton").Click += delegate { reader.SetMode(ZoomMode.FitWidth); };
             Ui.Find<Button>(root, "FitPageButton").Click += delegate { reader.SetMode(ZoomMode.FitPage); };
             updateButton.Click += delegate { InstallUpdate(); };
-            bookTitle.MouseLeftButtonUp += delegate { if (openBook != null) Rename(openBook); };
+            Ui.OnClick(bookTitle, delegate { if (openBook != null) Rename(openBook); });
 
             currentTab.Checked += delegate { ShowTab(false); };
             archiveTab.Checked += delegate { ShowTab(true); };
-            bookList.MouseLeftButtonUp += OnBookClick;
+            Ui.OnClick(bookList, OnBookClick);
             bookList.MouseRightButtonUp += OnBookRightClick;
             bookList.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnBookButton));
             splitter.DragCompleted += delegate
@@ -987,10 +987,11 @@ namespace CutePdf
             return null;
         }
 
-        void OnBookClick(object sender, MouseButtonEventArgs e)
+        void OnBookClick(object pressedOn, MouseButtonEventArgs released)
         {
-            Book book = BookFrom(e.OriginalSource);
-            if (book != null) OpenBook(book, true);
+            // Press on one card and release on another (a drag) opens nothing.
+            Book book = BookFrom(released.OriginalSource);
+            if (book != null && book == BookFrom(pressedOn)) OpenBook(book, true);
         }
 
         void OnBookButton(object sender, RoutedEventArgs e)

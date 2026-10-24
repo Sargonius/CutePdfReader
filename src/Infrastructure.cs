@@ -227,6 +227,24 @@ namespace CutePdf
             return found;
         }
 
+        public delegate void ClickHandler(object pressedOn, System.Windows.Input.MouseButtonEventArgs released);
+
+        // A click is a press and a release inside the same element. A bare release also arrives
+        // when a double-click on the title bar maximizes the window and the cursor ends up over
+        // the content; that one must not count.
+        public static void OnClick(UIElement element, ClickHandler handler)
+        {
+            object pressedOn = null;
+            element.MouseLeftButtonDown += delegate(object s, System.Windows.Input.MouseButtonEventArgs e) { pressedOn = e.OriginalSource; };
+            element.MouseLeave += delegate { pressedOn = null; };
+            element.MouseLeftButtonUp += delegate(object s, System.Windows.Input.MouseButtonEventArgs e)
+            {
+                object source = pressedOn;
+                pressedOn = null;
+                if (source != null) handler(source, e);
+            };
+        }
+
         public static System.Windows.Controls.MenuItem MenuItem(string header, Action action)
         {
             var item = new System.Windows.Controls.MenuItem();

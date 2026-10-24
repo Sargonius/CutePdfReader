@@ -58,7 +58,7 @@ namespace CutePdf
             this.bubble = bubble;
             this.addButton = addButton;
             art.Source = CloudArt.CreateImage();
-            card.MouseLeftButtonUp += delegate { Next(); };
+            Ui.OnClick(card, delegate { Next(); });
             card.MouseRightButtonUp += OnRightClick;
             addButton.Click += delegate { AddPictures(); };
             timer.Interval = TimeSpan.FromMinutes(6);
