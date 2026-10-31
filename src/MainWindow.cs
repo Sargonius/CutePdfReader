@@ -34,9 +34,9 @@ namespace CutePdf
 
         // Named parts of ui/MainLayout.xaml
         readonly ColumnDefinition sidebarColumn;
-        readonly FrameworkElement sidebar, toolbar, emptyState, dropOverlay, updateBanner;
+        readonly FrameworkElement sidebar, toolbar, emptyState, dropOverlay, updateBanner, tabsPanel, tabsTrack;
         readonly GridSplitter splitter;
-        readonly ItemsControl bookList;
+        readonly ItemsControl bookList, tabList;
         readonly RadioButton currentTab, archiveTab;
         readonly TextBlock listEmptyText, bookTitle, pageCountText, zoomText, updateText;
         readonly TextBox pageBox;
@@ -56,6 +56,11 @@ namespace CutePdf
         WindowState stateBeforeFullscreen;
         DateTime dirtySince;
         Updater.Release pendingRelease;
+        // The tab whose name is being edited in place, and the editor parts of its template.
+        Book renamingBook;
+        ReadingTab renamingTab;
+        TextBox renameBox;
+        FrameworkElement renameLabel;
 
         public MainWindow(LibraryData data, string startupFile, Task<PdfDoc> preloaded, string preloadedPath, bool afterUpdate)
         {
@@ -98,6 +103,9 @@ namespace CutePdf
             pageBox = Ui.Find<TextBox>(root, "PageBox");
             pagePanel = Ui.Find<Panel>(root, "PagePanel");
             zoomPanel = Ui.Find<Panel>(root, "ZoomPanel");
+            tabsPanel = Ui.Find<FrameworkElement>(root, "TabsPanel");
+            tabsTrack = Ui.Find<FrameworkElement>(root, "TabsTrack");
+            tabList = Ui.Find<ItemsControl>(root, "TabList");
             Ui.Find<Border>(root, "ReaderHost").Child = reader;
             Ui.Find<Image>(root, "EmptyArt").Source = CloudArt.CreateImage();
 
@@ -121,6 +129,11 @@ namespace CutePdf
             Ui.Find<Button>(root, "FitPageButton").Click += delegate { reader.SetMode(ZoomMode.FitPage); };
             updateButton.Click += delegate { InstallUpdate(); };
             Ui.OnClick(bookTitle, delegate { if (openBook != null) Rename(openBook); });
+            Ui.Find<Button>(root, "AddTabButton").Click += delegate { AddTab(); };
+            tabList.MouseLeftButtonDown += OnTabMouseDown;
+            tabList.MouseRightButtonUp += OnTabRightClick;
+            tabList.PreviewKeyDown += OnTabNameKey;
+            tabList.LostKeyboardFocus += delegate { EndTabRename(true); };
 
             currentTab.Checked += delegate { ShowTab(false); };
             archiveTab.Checked += delegate { ShowTab(true); };
@@ -329,18 +342,23 @@ namespace CutePdf
             positionSettled = false;
             emptyState.Visibility = Visibility.Collapsed;
             Title = book.Title + " — " + AppTitle;
+            RefreshTabs();
             UpdateToolbar();
 
             Task<PdfDoc> pre = null;
             if (preloaded != null && SamePath(preloadedPath, book.FilePath)) pre = preloaded;
             preloaded = null;
 
-            string error = await reader.OpenAsync(book.FilePath, book.ScrollPage, book.ScrollFraction, book.ZoomMode, book.Zoom, pre);
+            int shown, page;
+            double frac;
+            book.GetPlace(out shown, out page, out frac);
+            string error = await reader.OpenAsync(book.FilePath, page, frac, book.ZoomMode, book.Zoom, pre);
             if (book != openBook) return;
             if (error == null)
             {
                 book.PageCount = reader.PageCount;
                 book.IsMissing = false;
+                WarmOtherTabs();
             }
             else
             {
@@ -359,29 +377,25 @@ namespace CutePdf
             data.CurrentBookId = null;
             emptyState.Visibility = Visibility.Visible;
             Title = AppTitle;
+            RefreshTabs();
             UpdateToolbar();
         }
 
-        // byUser: the reader moved because she scrolled, so the position gets a fresh
-        // timestamp and wins over older positions from the other computer.
+        // Saves where the open tab is. byUser: the reader moved because she scrolled, so the
+        // position gets a fresh timestamp and wins over older positions from the other computer.
         void CapturePosition(bool byUser)
         {
             if (openBook == null || !reader.HasDocument) return;
-            int page;
-            double frac;
+            int page, oldShown, oldPage;
+            double frac, oldFrac;
             reader.GetAnchor(out page, out frac);
-            int shown = reader.CurrentPage >= 0 ? reader.CurrentPage : openBook.Page;
-            bool moved = page != openBook.ScrollPage || shown != openBook.Page || Math.Abs(frac - openBook.ScrollFraction) > 0.02;
-            openBook.ScrollPage = page;
-            openBook.ScrollFraction = frac;
-            openBook.Page = shown;
+            openBook.GetPlace(out oldShown, out oldPage, out oldFrac);
+            int shown = reader.CurrentPage >= 0 ? reader.CurrentPage : oldShown;
+            bool moved = page != oldPage || shown != oldShown || Math.Abs(frac - oldFrac) > 0.02;
+            openBook.SetPlace(shown, page, frac, moved && byUser ? Stamp.Now() : 0);
             openBook.ZoomMode = reader.Mode;
             openBook.Zoom = reader.CustomZoom;
-            if (moved && byUser)
-            {
-                openBook.PositionStamp = Stamp.Now();
-                sync.ExportSoon();
-            }
+            if (moved && byUser) sync.ExportSoon();
         }
 
         void OnReaderPosition(object sender, EventArgs e)
@@ -395,7 +409,9 @@ namespace CutePdf
             {
                 if (lastPage >= 0 && page == lastPage + 1) CountPageRead(openBook, page);
                 lastPage = page;
-                if (page == reader.PageCount - 1 && reader.PageCount > 1 && !openBook.Archived && finishedThisSession.Add(openBook.Id))
+                // Only the book's own place counts: the answers at the back aren't the end of the book.
+                if (page == reader.PageCount - 1 && reader.PageCount > 1 && !openBook.Archived && openBook.OpenTab == null
+                    && finishedThisSession.Add(openBook.Id))
                     mascot.OnBookFinished(openBook.Title);
             }
             UpdateToolbar();
@@ -710,20 +726,25 @@ namespace CutePdf
         void ApplyRemote(List<SyncDevice> devices, bool announce)
         {
             Book open = openBook;
+            int shown = 0, page = 0, pageBefore = 0;
+            double frac = 0, fracBefore = 0;
+            if (open != null) open.GetPlace(out shown, out pageBefore, out fracBefore);
             MergeResult result = SyncMerge.Apply(data, devices);
             if (!result.Any) return;
             Log.Trace("sync: +" + result.Added.Count + " -" + result.Removed.Count + " moved " + result.Moved.Count);
+            // The open tab's place may have moved, or the tab itself may be gone there.
+            if (open != null) open.GetPlace(out shown, out page, out frac);
 
             if (open != null && result.Removed.Contains(open))
             {
                 CloseBook();
             }
-            else if (open != null && result.Moved.Contains(open) && reader.HasDocument)
+            else if (open != null && (page != pageBefore || Math.Abs(frac - fracBefore) > 0.0005) && reader.HasDocument)
             {
                 positionSettled = false;
-                lastPage = open.Page;
-                reader.RestorePosition(open.ScrollPage, open.ScrollFraction);
-                mascot.Say("Продолжаем с другого компьютера — стр. " + (open.Page + 1) + " ☁");
+                lastPage = shown;
+                reader.RestorePosition(page, frac);
+                mascot.Say("Продолжаем с другого компьютера — стр. " + (shown + 1) + " ☁");
             }
             else if (announce && result.Added.Count == 1)
             {
@@ -741,6 +762,8 @@ namespace CutePdf
 
             if (openBook != null) Title = openBook.Title + " — " + AppTitle;
             RefreshLists();
+            RefreshTabs();
+            WarmOtherTabs();
             UpdateToolbar();
             SaveNow();
             sync.ExportSoon();   // ids may have been unified with the other computer
@@ -980,10 +1003,15 @@ namespace CutePdf
 
         static Book BookFrom(object source)
         {
+            return ItemFrom<Book>(source);
+        }
+
+        static T ItemFrom<T>(object source) where T : class
+        {
             var element = source as FrameworkElement;
-            if (element != null) return element.DataContext as Book;
+            if (element != null) return element.DataContext as T;
             var content = source as FrameworkContentElement;
-            if (content != null) return content.DataContext as Book;
+            if (content != null) return content.DataContext as T;
             return null;
         }
 
@@ -1024,6 +1052,170 @@ namespace CutePdf
             e.Handled = true;
         }
 
+        // ---- tabs of the open book ----
+
+        void RefreshTabs()
+        {
+            List<ReadingTab> tabs = openBook != null && openBook.HasTabs ? openBook.AllTabs() : new List<ReadingTab>();
+            var shown = tabList.ItemsSource as List<ReadingTab>;
+            if (shown == null || !tabs.SequenceEqual(shown))
+            {
+                EndTabRename(true);   // its editor goes away with the old tab elements
+                tabList.ItemsSource = tabs;
+            }
+            if (openBook != null) openBook.MarkActiveTab();
+            tabsTrack.Visibility = tabs.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // The other tabs' pages get rendered in idle time and kept, so switching to them is instant.
+        void WarmOtherTabs()
+        {
+            if (openBook == null || !reader.HasDocument) return;
+            var places = new List<KeyValuePair<int, double>>();
+            ReadingTab active = openBook.ActiveTab;
+            foreach (ReadingTab tab in openBook.AllTabs())
+            {
+                if (tab == active) continue;
+                int shown, page;
+                double frac;
+                openBook.GetPlace(tab, out shown, out page, out frac);
+                places.Add(new KeyValuePair<int, double>(page, frac));
+            }
+            reader.KeepWarm(places);
+        }
+
+        // After the open tab changed: shows its place.
+        void GoToOpenTab()
+        {
+            RefreshTabs();
+            WarmOtherTabs();
+            if (!reader.HasDocument) return;
+            int shown, page, nowPage;
+            double frac, nowFrac;
+            openBook.GetPlace(out shown, out page, out frac);
+            reader.GetAnchor(out nowPage, out nowFrac);
+            if (page == nowPage && Math.Abs(frac - nowFrac) < 0.0005) return;
+            // Not reading: the jump itself mustn't count as pages read or as a fresh position.
+            positionSettled = false;
+            lastPage = shown;
+            reader.RestorePosition(page, frac);
+            UpdateToolbar();
+        }
+
+        void SwitchTab(ReadingTab tab)
+        {
+            EndTabRename(true);
+            if (openBook == null || !reader.HasDocument || tab == openBook.ActiveTab) return;
+            CapturePosition(false);
+            openBook.ActiveTabId = tab.Id;
+            GoToOpenTab();
+            ScheduleSave();
+        }
+
+        void CycleTabs(int direction)
+        {
+            if (openBook == null || !openBook.HasTabs) return;
+            List<ReadingTab> all = openBook.AllTabs();
+            int i = all.IndexOf(openBook.ActiveTab);
+            SwitchTab(all[(i + direction + all.Count) % all.Count]);
+        }
+
+        // The new tab starts where she is now; then she pages to the answers or wherever.
+        void AddTab()
+        {
+            EndTabRename(true);
+            if (openBook == null || !reader.HasDocument) return;
+            CapturePosition(false);
+            bool first = !openBook.HasTabs;
+            openBook.AddTab();
+            GoToOpenTab();
+            Commit();
+            mascot.Say((first ? "Теперь в учебнике две вкладки ☁ " : "Ещё одна вкладка ☁ ")
+                + "Двойной клик по вкладке — переименовать, правый клик — удалить");
+        }
+
+        void RemoveTab(ReadingTab tab)
+        {
+            EndTabRename(false);
+            if (openBook == null || !reader.HasDocument) return;
+            CapturePosition(false);
+            openBook.RemoveTab(tab);
+            GoToOpenTab();
+            Commit();
+        }
+
+        void OnTabMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            ReadingTab tab = ItemFrom<ReadingTab>(e.OriginalSource);
+            if (tab == null) return;
+            if (e.ClickCount == 2) BeginTabRename(tab);
+            else SwitchTab(tab);
+            e.Handled = true;
+        }
+
+        void OnTabRightClick(object sender, MouseButtonEventArgs e)
+        {
+            ReadingTab tab = ItemFrom<ReadingTab>(e.OriginalSource);
+            if (tab == null || tab == renamingTab) return;
+            var menu = new ContextMenu();
+            menu.Items.Add(Ui.MenuItem("Переименовать", delegate { BeginTabRename(tab); }));
+            menu.Items.Add(Ui.MenuItem("Удалить вкладку", delegate { RemoveTab(tab); }));
+            menu.PlacementTarget = e.OriginalSource as UIElement ?? tabList;
+            menu.IsOpen = true;
+            e.Handled = true;
+        }
+
+        // The name is edited right on the tab: Enter or a click elsewhere saves, Esc cancels.
+        void BeginTabRename(ReadingTab tab)
+        {
+            EndTabRename(true);
+            var item = tabList.ItemContainerGenerator.ContainerFromItem(tab) as ContentPresenter;
+            if (openBook == null || item == null || item.ContentTemplate == null) return;
+            var box = item.ContentTemplate.FindName("NameBox", item) as TextBox;
+            var label = item.ContentTemplate.FindName("NameText", item) as FrameworkElement;
+            if (box == null || label == null) return;
+            renamingBook = openBook;
+            renamingTab = tab;
+            renameBox = box;
+            renameLabel = label;
+            box.Text = tab.Name;
+            label.Visibility = Visibility.Hidden;
+            box.Visibility = Visibility.Visible;
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(delegate
+            {
+                if (renameBox != box) return;
+                box.Focus();
+                box.SelectAll();
+            }));
+        }
+
+        void EndTabRename(bool save)
+        {
+            ReadingTab tab = renamingTab;
+            if (tab == null) return;
+            renamingTab = null;
+            string name = renameBox.Text.Trim();
+            if (renameBox.IsKeyboardFocusWithin) reader.FocusView();
+            renameBox.Visibility = Visibility.Collapsed;
+            renameLabel.Visibility = Visibility.Visible;
+            renameBox = null;
+            renameLabel = null;
+            if (save && name.Length > 0 && name != tab.Name)
+            {
+                renamingBook.RenameTab(tab, name);
+                Commit();
+            }
+        }
+
+        void OnTabNameKey(object sender, KeyEventArgs e)
+        {
+            if (renamingTab == null) return;
+            if (e.Key == Key.Enter) EndTabRename(true);
+            else if (e.Key == Key.Escape) EndTabRename(false);
+            else return;
+            e.Handled = true;
+        }
+
         // ---- toolbar, sidebar, fullscreen ----
 
         void UpdateToolbar()
@@ -1031,6 +1223,7 @@ namespace CutePdf
             bool has = reader.HasDocument;
             pagePanel.Visibility = has ? Visibility.Visible : Visibility.Hidden;
             zoomPanel.Visibility = has ? Visibility.Visible : Visibility.Hidden;
+            tabsPanel.Visibility = has ? Visibility.Visible : Visibility.Hidden;
             bookTitle.Text = openBook != null ? openBook.Title : "";
             pageCountText.Text = has ? "из " + reader.PageCount : "";
             if (!pageBox.IsKeyboardFocusWithin)
@@ -1130,6 +1323,8 @@ namespace CutePdf
                 {
                     case Key.O: AddViaDialog(); break;
                     case Key.B: ToggleSidebar(); break;
+                    case Key.T: AddTab(); break;
+                    case Key.Tab: CycleTabs(shift ? -1 : 1); break;
                     case Key.G: if (reader.HasDocument) pageBox.Focus(); break;
                     case Key.OemPlus:
                     case Key.Add: reader.ZoomStep(1); break;

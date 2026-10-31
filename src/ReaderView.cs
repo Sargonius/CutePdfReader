@@ -42,6 +42,8 @@ namespace CutePdf
         readonly Dictionary<int, int> renderedFor = new Dictionary<int, int>();   // page -> target width it was rendered for
         readonly HashSet<int> failed = new HashSet<int>();
         readonly HashSet<int> retried = new HashSet<int>();
+        // Places of the book's other tabs (page + fraction, as in RestorePosition).
+        readonly List<KeyValuePair<int, double>> warm = new List<KeyValuePair<int, double>>();
         readonly DispatcherTimer settleTimer = new DispatcherTimer();
         readonly DispatcherTimer zoomCommitTimer = new DispatcherTimer();
         readonly Brush shadowBrush, labelBrush;
@@ -204,6 +206,27 @@ namespace CutePdf
             scroll.ScrollToVerticalOffset(Math.Max(0, tops[page] + frac * (heights[page] + Gap)));
         }
 
+        // The pages these places would show stay rendered (in idle time, after the visible ones),
+        // so jumping to another tab of the book shows finished pages at once.
+        public void KeepWarm(IEnumerable<KeyValuePair<int, double>> places)
+        {
+            warm.Clear();
+            warm.AddRange(places);
+            Pump();
+        }
+
+        IEnumerable<int> WarmPages()
+        {
+            if (doc == null || tops == null) yield break;
+            foreach (KeyValuePair<int, double> place in warm)
+            {
+                int p = Math.Max(0, Math.Min(tops.Length - 1, place.Key));
+                double y = Math.Max(0, tops[p] + place.Value * (heights[p] + Gap));
+                int last = PageAt(y + scroll.ViewportHeight);
+                for (int i = PageAt(y); i <= last; i++) yield return i;
+            }
+        }
+
         public void SetMode(ZoomMode m)
         {
             if (doc == null) return;
@@ -348,6 +371,7 @@ namespace CutePdf
             renderedFor.Clear();
             failed.Clear();
             retried.Clear();
+            warm.Clear();
             tops = heights = widths = null;
             canvas.Width = 0;
             canvas.Height = 0;
@@ -514,7 +538,7 @@ namespace CutePdf
 
         bool InKeepRange(int page)
         {
-            return page >= visibleFirst - Prefetch - 1 && page <= visibleLast + Prefetch + 1;
+            return (page >= visibleFirst - Prefetch - 1 && page <= visibleLast + Prefetch + 1) || WarmPages().Contains(page);
         }
 
         void CreateSlot(int i)
@@ -681,6 +705,7 @@ namespace CutePdf
                 if (visibleLast + k < n) yield return visibleLast + k;
                 if (visibleFirst - k >= 0) yield return visibleFirst - k;
             }
+            foreach (int i in WarmPages()) yield return i;
         }
 
         // ---- events ----

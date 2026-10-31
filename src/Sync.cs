@@ -37,6 +37,10 @@ namespace CutePdf
         [DataMember(Order = 8)] public double ScrollFraction { get; set; }
         [DataMember(Order = 9)] public long PositionStamp { get; set; }
         [DataMember(Order = 10)] public long InfoStamp { get; set; }
+        // Older versions leave these out, and a zero stamp never wins.
+        [DataMember(Order = 11, EmitDefaultValue = false)] public string MainTabName { get; set; }
+        [DataMember(Order = 12, EmitDefaultValue = false)] public List<ReadingTab> Tabs { get; set; }
+        [DataMember(Order = 13, EmitDefaultValue = false)] public long TabsStamp { get; set; }
     }
 
     public sealed class MergeResult
@@ -44,11 +48,11 @@ namespace CutePdf
         public readonly List<Book> Added = new List<Book>();
         public readonly List<Book> Removed = new List<Book>();
         public readonly List<Book> Moved = new List<Book>();
-        public bool InfoChanged;
+        public bool InfoChanged, TabsChanged;
 
         public bool Any
         {
-            get { return InfoChanged || Added.Count > 0 || Removed.Count > 0 || Moved.Count > 0; }
+            get { return InfoChanged || TabsChanged || Added.Count > 0 || Removed.Count > 0 || Moved.Count > 0; }
         }
     }
 
@@ -257,6 +261,9 @@ namespace CutePdf
                 s.ScrollFraction = b.ScrollFraction;
                 s.PositionStamp = b.PositionStamp;
                 s.InfoStamp = b.InfoStamp;
+                s.MainTabName = b.MainTabName;
+                s.Tabs = b.Tabs;
+                s.TabsStamp = b.TabsStamp;
                 return s;
             }).ToList();
             device.Removed = data.Removed.ToList();
@@ -292,6 +299,7 @@ namespace CutePdf
             var result = new MergeResult();
             var position = new Dictionary<string, SyncBook>();
             var info = new Dictionary<string, SyncBook>();
+            var tabs = new Dictionary<string, SyncBook>();
             var removed = new Dictionary<string, long>();
             foreach (SyncDevice device in devices)
             {
@@ -303,6 +311,7 @@ namespace CutePdf
                         SyncBook seen;
                         if (!position.TryGetValue(r.Id, out seen) || r.PositionStamp > seen.PositionStamp) position[r.Id] = r;
                         if (!info.TryGetValue(r.Id, out seen) || r.InfoStamp > seen.InfoStamp) info[r.Id] = r;
+                        if (!tabs.TryGetValue(r.Id, out seen) || r.TabsStamp > seen.TabsStamp) tabs[r.Id] = r;
                     }
                 }
                 if (device.Removed != null)
@@ -317,7 +326,7 @@ namespace CutePdf
 
             foreach (string id in info.Keys)
             {
-                SyncBook pos = position[id], inf = info[id];
+                SyncBook pos = position[id], inf = info[id], tab = tabs[id];
                 string fingerprint = inf.Fingerprint ?? pos.Fingerprint;
                 Book local = data.Find(id);
                 if (local == null && fingerprint != null)
@@ -339,7 +348,7 @@ namespace CutePdf
                 if (local == null)
                 {
                     Tombstone mine = data.Removed.Find(t => t.Id == id);
-                    long newest = Math.Max(pos.PositionStamp, inf.InfoStamp);
+                    long newest = Math.Max(Math.Max(pos.PositionStamp, inf.InfoStamp), tab.TabsStamp);
                     if (gone >= newest || (mine != null && mine.Stamp >= newest)) continue;
                     var book = new Book();
                     book.Id = id;
@@ -351,13 +360,14 @@ namespace CutePdf
                     book.Zoom = 1;
                     book.Added = DateTime.Now.ToString("s");
                     ApplyPosition(book, pos);
+                    if (tab.TabsStamp > 0) ApplyTabs(book, tab);
                     data.Books.Add(book);
                     data.Removed.RemoveAll(t => t.Id == id);
                     result.Added.Add(book);
                     continue;
                 }
 
-                if (gone > Math.Max(local.PositionStamp, local.InfoStamp))
+                if (gone > local.LastStamp)
                 {
                     Remove(data, local, gone, result);
                     continue;
@@ -374,6 +384,12 @@ namespace CutePdf
                     local.InfoStamp = inf.InfoStamp;
                     result.InfoChanged = true;
                 }
+                // The newest set of tabs wins as a whole; which one is open stays per computer.
+                if (tab.TabsStamp > local.TabsStamp)
+                {
+                    ApplyTabs(local, tab);
+                    result.TabsChanged = true;
+                }
                 if (local.PageCount <= 0 && pos.PageCount > 0) local.PageCount = pos.PageCount;
                 if (string.IsNullOrEmpty(local.Fingerprint) && local.IsRemoteOnly) local.Fingerprint = fingerprint;
             }
@@ -383,7 +399,7 @@ namespace CutePdf
             {
                 if (info.ContainsKey(kv.Key)) continue;
                 Book local = data.Find(kv.Key);
-                if (local != null && kv.Value > Math.Max(local.PositionStamp, local.InfoStamp)) Remove(data, local, kv.Value, result);
+                if (local != null && kv.Value > local.LastStamp) Remove(data, local, kv.Value, result);
             }
             return result;
         }
@@ -395,6 +411,14 @@ namespace CutePdf
             book.ScrollPage = pos.ScrollPage;
             book.ScrollFraction = pos.ScrollFraction;
             book.PositionStamp = pos.PositionStamp;
+        }
+
+        static void ApplyTabs(Book book, SyncBook r)
+        {
+            book.Tabs = r.Tabs;
+            book.MainTabName = r.MainTabName;
+            book.TabsStamp = r.TabsStamp;
+            book.NormalizeTabs();
         }
 
         static void Remove(LibraryData data, Book book, long stamp, MergeResult result)

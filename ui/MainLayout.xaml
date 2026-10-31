@@ -115,6 +115,23 @@
             <Path Style="{StaticResource IconPath}" Data="{StaticResource IconNext}"/>
           </Button>
         </StackPanel>
+        <!-- Tabs of the open book (shown once it has two or more) and the button that adds one -->
+        <StackPanel x:Name="TabsPanel" DockPanel.Dock="Right" Orientation="Horizontal" Margin="0,0,14,0">
+          <Border x:Name="TabsTrack" Background="#E2F0FA" CornerRadius="10" Padding="3" VerticalAlignment="Center"
+                  Visibility="Collapsed">
+            <ItemsControl x:Name="TabList" ItemTemplate="{StaticResource ReadingTabTemplate}" Focusable="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+            </ItemsControl>
+          </Border>
+          <Button x:Name="AddTabButton" Style="{StaticResource FlatButton}" Margin="3,0,0,0"
+                  ToolTip="Новая вкладка в этом учебнике — например, для ответов (Ctrl+T)">
+            <Path Style="{StaticResource IconPath}" Data="{StaticResource IconNewTab}"/>
+          </Button>
+        </StackPanel>
         <TextBlock x:Name="BookTitle" VerticalAlignment="Center" Margin="8,0,12,0" FontSize="14" FontWeight="SemiBold"
                    TextTrimming="CharacterEllipsis" Foreground="{StaticResource InkBrush}" Cursor="Hand"
                    ToolTip="Нажми, чтобы переименовать (F2)"/>

@@ -32,6 +32,7 @@
   <Geometry x:Key="IconEdit">M10.5,2.5 L13.5,5.5 L5.5,13.5 L2.5,13.5 L2.5,10.5 Z M8.5,4.5 L11.5,7.5</Geometry>
   <Geometry x:Key="IconMore">M3,8 L3.01,8 M8,8 L8.01,8 M13,8 L13.01,8</Geometry>
   <Geometry x:Key="IconFullscreen">M1.5,5.5 L1.5,1.5 L5.5,1.5 M10.5,1.5 L14.5,1.5 L14.5,5.5 M14.5,10.5 L14.5,14.5 L10.5,14.5 M5.5,14.5 L1.5,14.5 L1.5,10.5</Geometry>
+  <Geometry x:Key="IconNewTab">M2.5,13.5 L2.5,4.5 Q2.5,2.5 4.5,2.5 L11.5,2.5 Q13.5,2.5 13.5,4.5 L13.5,13.5 M1,13.5 L15,13.5 M8,5.5 L8,10.5 M5.5,8 L10.5,8</Geometry>
 
   <Style x:Key="IconPath" TargetType="{x:Type Path}">
     <Setter Property="Width" Value="16"/>
@@ -174,6 +175,18 @@
         </ControlTemplate>
       </Setter.Value>
     </Setter>
+  </Style>
+
+  <!-- Renaming a tab in place: lies over the tab's label without changing the tab's height. -->
+  <Style x:Key="TabNameBox" TargetType="{x:Type TextBox}" BasedOn="{StaticResource PageBoxStyle}">
+    <Setter Property="Background" Value="White"/>
+    <Setter Property="BorderBrush" Value="{StaticResource SkyBrush}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Setter Property="Padding" Value="4,0"/>
+    <Setter Property="Margin" Value="-7,-3"/>
+    <Setter Property="MinWidth" Value="96"/>
+    <Setter Property="MaxWidth" Value="230"/>
+    <Setter Property="MaxLength" Value="40"/>
   </Style>
 
   <!-- Soft rounded scrollbars everywhere -->
@@ -324,6 +337,35 @@
       <DataTrigger Binding="{Binding IsMissing}" Value="True">
         <Setter TargetName="SubText" Property="Foreground" Value="{StaticResource PinkBrush}"/>
         <Setter TargetName="TitleText" Property="Opacity" Value="0.55"/>
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+
+  <!-- One tab of the open book, styled like the Текущие / Архив switch. The hidden bold copy of the
+       name keeps the width steady when the tab turns bold, so the toolbar doesn't jump. -->
+  <DataTemplate x:Key="ReadingTabTemplate">
+    <Border x:Name="Pill" Background="Transparent" CornerRadius="8" Padding="11,4" Cursor="Hand" ToolTip="{Binding Hint}">
+      <Grid>
+        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" MaxWidth="160" TextTrimming="CharacterEllipsis" Visibility="Hidden"/>
+        <TextBlock x:Name="NameText" Text="{Binding Name}" MaxWidth="160" TextTrimming="CharacterEllipsis"
+                   HorizontalAlignment="Center" Foreground="{StaticResource InkSoftBrush}"/>
+        <TextBox x:Name="NameBox" Style="{StaticResource TabNameBox}" Visibility="Collapsed"/>
+      </Grid>
+    </Border>
+    <DataTemplate.Triggers>
+      <Trigger SourceName="Pill" Property="IsMouseOver" Value="True">
+        <Setter TargetName="Pill" Property="Background" Value="#EEF7FD"/>
+        <Setter TargetName="NameText" Property="Foreground" Value="{StaticResource InkBrush}"/>
+      </Trigger>
+      <DataTrigger Binding="{Binding IsActive}" Value="True">
+        <Setter TargetName="Pill" Property="Background" Value="White"/>
+        <Setter TargetName="NameText" Property="Foreground" Value="{StaticResource InkBrush}"/>
+        <Setter TargetName="NameText" Property="FontWeight" Value="SemiBold"/>
+        <Setter TargetName="Pill" Property="Effect">
+          <Setter.Value>
+            <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.12" Color="#4E7CA8"/>
+          </Setter.Value>
+        </Setter>
       </DataTrigger>
     </DataTemplate.Triggers>
   </DataTemplate>
